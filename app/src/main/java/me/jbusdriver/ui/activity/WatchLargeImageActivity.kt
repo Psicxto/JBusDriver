@@ -54,6 +54,17 @@ class WatchLargeImageActivity : BaseActivity() {
         initWidget()
     }
 
+    override fun onDestroy() {
+        // 清理所有PhotoView和Glide资源
+        imageViewList.forEach { view ->
+            view.pv_image_large?.let { photoView ->
+                GlideApp.with(this).clear(photoView)
+                photoView.setImageDrawable(null)
+            }
+        }
+        super.onDestroy()
+    }
+
 
     @SuppressLint("SetTextI18n")
     private fun initWidget() {
@@ -67,6 +78,8 @@ class WatchLargeImageActivity : BaseActivity() {
         }
 
         vp_largeImage.adapter = MyViewPagerAdapter()
+        // 设置ViewPager缓存页面数，避免频繁创建销毁
+        vp_largeImage.offscreenPageLimit = 1
         vp_largeImage.addOnPageChangeListener(object : ViewPager.OnPageChangeListener {
             override fun onPageScrollStateChanged(state: Int) {
             }
@@ -76,6 +89,16 @@ class WatchLargeImageActivity : BaseActivity() {
 
             override fun onPageSelected(position: Int) {
                 this@WatchLargeImageActivity.tv_url_index.text = "${position + 1} / ${imageViewList.size}"
+                // 清理非当前页面的PhotoView缩放状态
+                imageViewList.forEachIndexed { index, view ->
+                    if (index != position) {
+                        view.pv_image_large?.let { photoView ->
+                            if (photoView.scale != 1.0f) {
+                                photoView.scale = 1.0f
+                            }
+                        }
+                    }
+                }
             }
         })
         vp_largeImage.currentItem = if (index == -1) 0 else index
@@ -119,7 +142,15 @@ class WatchLargeImageActivity : BaseActivity() {
     inner class MyViewPagerAdapter : PagerAdapter() {
 
         override fun destroyItem(container: ViewGroup, position: Int, `object`: Any) {
-            container.removeView(imageViewList[position])//删除页卡
+            val view = imageViewList[position]
+            // 清理PhotoView状态和Glide加载
+            view.pv_image_large?.let { photoView ->
+                GlideApp.with(this@WatchLargeImageActivity).clear(photoView)
+                photoView.setImageDrawable(null)
+                // 重置PhotoView的缩放状态
+                photoView.scale = 1.0f
+            }
+            container.removeView(view)//删除页卡
         }
 
 
@@ -131,6 +162,9 @@ class WatchLargeImageActivity : BaseActivity() {
         }
 
         private fun loadImage(view: View, position: Int) {
+            // 检查Activity是否已销毁
+            if (isDestroyedCompatible) return
+            
             view.findViewById<View>(R.id.pb_hor_progress)?.animate()?.alpha(1f)?.setDuration(300)?.start()
             val offset = Math.abs(vp_largeImage.currentItem - position)
             val priority = when (offset) {
@@ -140,6 +174,10 @@ class WatchLargeImageActivity : BaseActivity() {
                 else -> Priority.LOW
             }
             val url = urls[position]
+            
+            // 先清理之前的加载
+            GlideApp.with(this@WatchLargeImageActivity).clear(view.pv_image_large)
+            
             GlideApp.with(this@WatchLargeImageActivity)
                 .load(url.toGlideNoHostUrl)
                 .transition(DrawableTransitionOptions.withCrossFade())
@@ -181,12 +219,20 @@ class WatchLargeImageActivity : BaseActivity() {
                         super.onResourceReady(resource, transition)
                         view.pb_hor_progress?.animate()?.alpha(0f)?.setDuration(300)?.start()
                         removeProgressListener(listener)
+                        // 确保PhotoView正确显示图片
+                        view.pv_image_large?.let { photoView ->
+                            photoView.scale = 1.0f
+                        }
                     }
 
                     override fun onLoadFailed(errorDrawable: Drawable?) {
                         super.onLoadFailed(errorDrawable)
                         removeProgressListener(listener)
                         view.pb_hor_progress?.animate()?.alpha(0f)?.setDuration(300)?.start()
+                        // 重置PhotoView状态
+                        view.pv_image_large?.let { photoView ->
+                            photoView.scale = 1.0f
+                        }
                     }
 
                 })
