@@ -1,31 +1,56 @@
+// 定义一个扩展属性 'alwaysLib' 并设置为 true。
+// 这条注释解释了其目的：即使应用了 'cc-settings-2.gradle'（该脚本可能包含将模块作为 application 构建的逻辑），
+// 此模块也应始终被编译为一个 Android 库 (library)。
+// 这是为了防止其他组件在依赖此拦截器模块时，由于模块类型冲突而导致构建错误。
 ext.alwaysLib = true //虽然apply了cc-settings-2.gradle，但一直作为library编译，否则别的组件依赖此module时会报错
+
+// 从根项目目录下的 'buildscripts' 文件夹中应用 'cc-settings-2.gradle' 脚本。
+// 这意味着此模块会继承通用的 CC 组件化框架配置。
 apply from: rootProject.file('buildscripts/cc-settings-2.gradle')
+
+// 应用 Kotlin Android 插件，使项目支持 Kotlin 语言。
 apply plugin: 'kotlin-android'
 
 
+// Android 项目的标准配置块。
 android {
+    // 设置编译时使用的 Android SDK 版本，版本号从根项目的 'versions.gradle' 文件中获取。
     compileSdkVersion versions.compileSdk
 
+    // 默认配置块，适用于所有构建变体 (build variants)。
     defaultConfig {
+        // 设置应用支持的最低 API 级别。
         minSdkVersion 18
+        // 设置应用的目标 API 级别，版本号从根项目的 'versions.gradle' 文件中获取。
         targetSdkVersion versions.targetSdk
+        // 设置应用的版本号。
         versionCode 1
+        // 设置应用的版本名称。
         versionName "1.0"
 
+        // 指定用于运行 Android instrumentation 测试的 Runner。
         testInstrumentationRunner "android.support.test.runner.AndroidJUnitRunner"
 
     }
 
+    // 构建类型配置块。
     buildTypes {
+        // 'release' 构建类型的特定配置。
         release {
+            // 是否启用代码混淆和优化。
             minifyEnabled false
+            // 指定 ProGuard 规则文件的位置。
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
     }
 
 }
 
+// 依赖配置块。
 dependencies {
+    // 添加对 ':libraries:library_base' 模块的实现依赖。
+    // 这意味着此拦截器组件依赖于项目的基础库。
     implementation project(':libraries:library_base')
+    // 添加对 Kotlin 标准库的实现依赖，版本号从根项目的 'versions.gradle' 文件中获取。
     implementation "org.jetbrains.kotlin:kotlin-stdlib:${versions.kotlin}"
 }

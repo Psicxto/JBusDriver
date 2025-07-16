@@ -1,64 +1,67 @@
 //-----------------------------------------------------------
 //
-//  app使用的自定义cc-settings文件
-//  主要是为了演示：
-//      1. 自动注册组件B的processor
-//      2. 全局拦截器的依赖
+//  主应用（app模块）使用的自定义 CC（组件化框架）配置文件
+//  此文件的主要目的：
+//      1. 演示如何为特定组件（例如，组件B）自动注册处理器（Processor）。
+//      2. 演示如何为主应用添加全局拦截器的依赖。
 //
 //-----------------------------------------------------------
 
-//#module_name=true 将单独运行的组件从主app打包依赖项中排除
+// 当某个组件被设置为独立运行时（例如，在 build.gradle 中设置 ext.runAsApp = true），
+// 这行注释（如果取消注释并设置模块名）可以用来在打包主应用时排除该组件的依赖，避免冲突。
 
 
+// 应用通用的 CC 配置文件，该文件包含了所有模块共享的组件化基础配置。
 apply from: rootProject.file('buildscripts/cc-settings-2.gradle')
 
-//默认开启kotlin
-//if (project.ext.has('runAsApp') && project.ext.runAsApp) {
-//    project.apply plugin: 'kotlin-android'
-//    project.apply plugin: 'kotlin-android-extensions'
-//    project.apply plugin: 'kotlin-kapt'//kapt3插件
-//}
+// 这段被注释的代码原本用于在组件作为独立应用运行时，自动为其应用 Kotlin 相关的 Gradle 插件。
+// 当前项目中，这些插件可能已经在各个模块的 build.gradle 中单独应用了。
 
 
+// 定义主应用模块的依赖关系
 dependencies {
+    // 添加对基础库和通用数据模型库的依赖
     implementation project(':libraries:library_base')
     implementation project(':libraries:library_common_bean')
-    //2018-06-03新增：这里是为了示例添加全局拦截器
+    // 当主应用作为 App 运行时（这是默认情况，runAsApp 通常为 true），添加全局拦截器。
     if (project.ext.has('runAsApp') && project.ext.runAsApp) {
-        //说明：需要兼容的情况有3种(单独组件作为app运行、打包在主app内、组件在多个app上复用但全局拦截器不同)
-        //     为了兼容以上3种情况，建议将全局拦截器作为一个单独的module，在此处给不同app添加不同拦截器module
+        // 说明：为了处理多种构建场景（如：组件独立运行、组件集成到主应用、组件在不同App中复用），
+        // 最佳实践是将全局拦截器实现为一个独立的 module。
+        // 这样，可以根据不同的主应用，为其配置不同的拦截器模块。
         implementation project(':component_interceptors')
     }
 }
-//auto register extension:
+// 'AutoRegister' 插件的扩展配置说明：
 // 源码地址：https://github.com/luckybilly/AutoRegister
-// 功能介绍：
-//  在编译期扫描将打到apk包中的所有类
-//  将 scanInterface的实现类 或 scanSuperClasses的子类
-//  并在 codeInsertToClassName 类的 codeInsertToMethodName 方法中生成如下代码：
-//  codeInsertToClassName.registerMethodName(scanInterface)
-// 要点：
-//  1. codeInsertToMethodName 若未指定，则默认为static块
-//  2. codeInsertToMethodName 与 registerMethodName 需要同为static或非static
+// 功能介绍：这是一个在编译期自动注册类的 Gradle 插件。
+//   - 它会扫描所有将被打包进 APK 的类。
+//   - 找到指定接口（scanInterface）的实现类或指定父类（scanSuperClasses）的子类。
+//   - 然后，在目标类（codeInsertToClassName）的指定方法（codeInsertToMethodName）中，自动插入注册代码。
+//   - 生成的代码形如：`目标类.注册方法(找到的实现类实例);`
+// 关键点：
+//   1. 如果不指定 `codeInsertToMethodName`，代码会插入到静态代码块 `static {}` 中。
+//   2. `codeInsertToMethodName` 和 `registerMethodName` 必须同为静态或同为非静态方法。
 // 自动生成的代码示例：
 /*
-  在com.billy.app_lib_interface.CategoryManager.class文件中
-  static
-  {
-    register(new CategoryA()); //scanInterface的实现类
-    register(new CategoryB()); //scanSuperClass的子类
+  例如，在 com.billy.app_lib_interface.CategoryManager.class 文件中生成如下代码：
+  static {
+    register(new CategoryA()); // CategoryA 是 scanInterface 的一个实现类
+    register(new CategoryB()); // CategoryB 是 scanSuperClass 的一个子类
   }
  */
-//ccregister.registerInfo.add([
-//        //在自动注册组件的基础上增加：自动注册组件B的processor
-//        'scanInterface'             : 'com.billy.cc.demo.component.b.processor.IActionProcessor'
-//        , 'codeInsertToClassName'   : 'com.billy.cc.demo.component.b.ComponentB'
-//        , 'codeInsertToMethodName'  : 'initProcessors'
-//        , 'registerMethodName'      : 'add'
-//])
-//也可以按照上述格式继续添加你自己的自动注册需求，俗称：搭顺风车
+// 这是一个被注释掉的示例，演示如何使用 AutoRegister 为组件B自动注册其所有的 ActionProcessor。
+// ccregister.registerInfo.add([
+//         'scanInterface'             : 'com.billy.cc.demo.component.b.processor.IActionProcessor', // 扫描此接口的实现类
+//         'codeInsertToClassName'   : 'com.billy.cc.demo.component.b.ComponentB', // 在这个类中插入代码
+//         'codeInsertToMethodName'  : 'initProcessors', // 在这个方法中插入代码
+//         'registerMethodName'      : 'add' // 调用这个方法进行注册
+// ])
+// 开发者可以按照此格式添加自己的自动注册规则。
 
-//开启app内部多进程组件调用
+// 启用 CC 框架的多进程组件调用功能。
+// 设置为 true 后，CC 将支持跨进程的组件通信。
 ccregister.multiProcessEnabled = true
 
+// 应用另一个通用的 Gradle 脚本 `plugin-common.gradle`，
+// 该脚本可能包含了其他所有模块（包括插件）都需要的通用配置。
 apply from: rootProject.file('buildscripts/plugin-common.gradle')

@@ -1,87 +1,124 @@
-println("-------------------start plugin config-------------------")
+// 打印插件配置开始的标记
+println("-------------------start plugin config------------------- ")
+// 打印当前项目以及其 'runAsApp' 扩展属性的值，用于调试
 println("project $project ----> runAsApp : ${project.ext.has('runAsApp') && project.ext.runAsApp}")
 
 
-
-
+// 判断当前模块是否作为独立应用 (Host) 运行
 if (project.ext.has('runAsApp') && project.ext.runAsApp) {
-    //说明：需要兼容的情况有3种(单独组件作为app运行、打包在主app内、组件在多个app上复用但全局拦截器不同)
-    //     为了兼容以上3种情况，建议将全局拦截器作为一个单独的module，在此处给不同app添加不同拦截器module
-    println("$project ----> set app as host ")
+    // 说明：此处的配置是为了处理多种构建场景，包括：
+    // 1. 单独的组件作为 app 运行进行调试。
+    // 2. 组件被打包到主 app 中发布。
+    // 3. 组件在多个不同的 app 中复用，但每个 app 可能需要不同的全局拦截器。
+    // 为了实现这种灵活性，推荐将全局拦截器定义为一个独立的 module，
+    // 然后在这里根据不同的 app 配置，依赖不同的拦截器 module。
+    println("$project ----> set app as host ") // 打印日志，表明当前模块被配置为宿主应用
+
+    // 在项目评估阶段结束后执行，确保 Android 配置已经可用
     project.afterEvaluate {
+        // 获取 application id
         def appId = project.android.defaultConfig.applicationId
-        println("$project ----> appid : $appId avaliable")
+        println("$project ----> appid : $appId avaliable") // 打印获取到的 appId
+        // 校验 application id 是否为空，为空则抛出异常，因为宿主应用必须有 appId
         if (appId == null || appId.trim() == "") throw GradleException("application must set applicationId")
     }
+    // 添加 Phantom 宿主库依赖
     project.dependencies.add("implementation", "com.wlqq.phantom:phantom-host-lib:${versions.phantom.allVersion}")
+    // 添加 Phantom 通信库依赖
     project.dependencies.add("implementation", "com.wlqq.phantom:phantom-communication-lib:${versions.phantom.allVersion}")
+    // 应用 Phantom 宿主插件
     apply plugin: 'com.wlqq.phantom.host'
 } else if (project.name.startsWith("plugin_")) {
-    println("$project ---->  set app as client plugin")
+    // 如果项目名以前缀 "plugin_" 开头，则将其配置为 Phantom 插件
+    println("$project ---->  set app as client plugin") // 打印日志
+    // 应用 Phantom 插件插件
     apply plugin: 'com.wlqq.phantom.plugin'
 
-
+    // 添加 Phantom 通信库依赖，使用 compileOnly 是因为这些库在宿主中已经提供，插件编译时需要，但打包时不需要包含
     project.dependencies.add("compileOnly", "com.wlqq.phantom:phantom-communication-lib:${versions.phantom.allVersion}")
+    // 添加 Phantom 插件库依赖
     project.dependencies.add("compileOnly", "com.wlqq.phantom:phantom-plugin-lib:${versions.phantom.allVersion}")
 
-//    println("----> for plugin appid $CurrentAppID")
+//    println("----> for plugin appid $CurrentAppID") // 注释掉的调试代码
 
+    // 遍历所有的 application variants (如 debug, release)
     project.android.applicationVariants.all { variant ->
+        // 遍历所有输出
         variant.outputs.all { output ->
+            // 自定义输出的 APK 文件名格式为：applicationId_versionName.apk
             outputFileName = "${variant.applicationId}_${variant.versionName}.apk"
         }
     }
+
+    // 在项目评估阶段结束后执行
     afterEvaluate { project ->
+        // 在 debug 版本打包任务 (assembleDebug) 执行完毕后，执行以下操作
         project.tasks.assembleDebug.doLast {
-            println("$project ----> assembleDebug")
-            deletePluginInHost(deployTargets)
-            copyPluginToHost(deployTargets, 'debug')
+            println("$project ----> assembleDebug") // 打印日志
+            deletePluginInHost(deployTargets) // 从目标宿主中删除旧的插件
+            copyPluginToHost(deployTargets, 'debug') // 将新编译的 debug 插件复制到目标宿主
         }
 
+        // 在 release 版本打包任务 (assembleRelease) 执行完毕后，执行以下操作
         project.tasks.assembleRelease.doLast {
-            deletePluginInHost(deployTargets)
-            copyPluginToHost(deployTargets, 'release')
+            deletePluginInHost(deployTargets) // 从目标宿主中删除旧的插件
+            copyPluginToHost(deployTargets, 'release') // 将新编译的 release 插件复制到目标宿主
         }
     }
 
 } else if (project.name.startsWith("component_") && !(project.ext.has("alwaysLib") && project.ext.alwaysLib)) {
-    println("$project ---->  set app as impl plugin only")
+    // 如果项目名以前缀 "component_" 开头，并且没有被标记为 'alwaysLib' (始终是库)
+    // 这通常意味着它是一个可以作为插件独立运行的业务组件
+    println("$project ---->  set app as impl plugin only") // 打印日志
+    // 为这类组件添加 Phantom 宿主和通信库的依赖，使其具备加载其他插件的能力
     project.dependencies.add("implementation", "com.wlqq.phantom:phantom-host-lib:${versions.phantom.allVersion}")
     project.dependencies.add("implementation", "com.wlqq.phantom:phantom-communication-lib:${versions.phantom.allVersion}")
 }
 
-println("-------------------end plugin config-------------------")
+// 打印插件配置结束的标记
+println("-------------------end plugin config------------------- ")
 
-
+// 定义一个函数，用于从目标宿主应用的 assets 目录中删除旧的插件 APK
 def deletePluginInHost(Set<Project> targets) {
+    // 遍历所有目标宿主项目
     targets.each { p ->
+        // 定义插件存放的 assets 目录路径
         def assetsDir = file(p.getProjectDir().absolutePath + '/src/main/assets/plugins')
+        // 如果目录不存在，则创建它
         if (!assetsDir.exists()) {
             assetsDir.mkdirs()
         }
+        // 遍历目录下的所有文件
         assetsDir.eachFile { file ->
-            println "list assets file: " + file.name
+            println "list assets file: " + file.name // 打印文件名
+            // 如果文件名以当前插件的 applicationId 开头，则删除它
             if (file.name.startsWith(android.defaultConfig.applicationId)) {
-                def ret = file.delete()
-                println "delete assets file: ${file.name}, result: ${ret}"
+                def ret = file.delete() // 执行删除
+                println "delete assets file: ${file.name}, result: ${ret}" // 打印删除结果
             }
         }
     }
 }
 
+// 定义一个函数，用于将新编译的插件 APK 复制到目标宿主应用的 assets 目录
 def copyPluginToHost(Set<Project> targets, String dir) {
-
+    // 遍历所有目标宿主项目
     targets.each { p ->
-        println "copy build plugin to $p assets... "
+        println "copy build plugin to $p assets... " // 打印日志
+        // 使用 Gradle 的 copy 任务
         copy {
+            // 从当前插件的构建输出目录 (build/outputs/apk/[debug|release]) 复制文件
             from(buildDir.absolutePath + '/outputs/apk/' + dir) {
-                include('*.apk')
+                include('*.apk') // 只包含 .apk 文件
             }
 
+            // 如果是 debug 构建
             if(dir == 'debug'){
+                // 重命名文件，在末尾加上 "_debug.apk"，以作区分
                 rename ".apk", "_${dir}.apk"
             }
 
+            // 将文件复制到目标宿主的 assets/plugins/ 目录下
             into(p.getProjectDir().absolutePath + '/src/main/assets/plugins/')
         }
 

@@ -53,8 +53,46 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * 项目 数据缓存工具类，可以缓存jsonObject bitmap Object String drawable byte jsonarray
- * 可自定义缓存时间
+ * @author Michael Yang（杨福海）
+ * @version 1.0
+ * @description
+ * A lightweight caching library for Android that can cache various types of data, including strings, JSONObjects, JSONArrays, byte arrays, Serializable objects, Bitmaps, and Drawables.
+ * It supports setting expiration times for cached data and manages cache size and file count to prevent excessive disk usage.
+ *
+ * Why: 设计目的
+ * 在 Android 开发中，频繁地从网络或数据库加载数据会消耗用户的流量和电量，并可能导致应用响应缓慢。为了提升用户体验和应用性能，需要一个高效的缓存机制来将数据临时存储在本地磁盘上。
+ * `ACache` 的设计目的就是提供一个简单、易用且功能强大的二级缓存（磁盘缓存）解决方案。它旨在帮助开发者轻松地缓存各种类型的数据，并自动管理缓存的生命周期（如过期删除）和存储空间（如LRU淘汰策略），
+ * 从而避免手动管理文件读写、序列化、缓存淘汰等复杂逻辑。
+ *
+ * What: 功效作用
+ * 1.  **多数据类型支持**: 支持缓存常见的 Java 和 Android 数据类型，包括：
+ *     -   `String`
+ *     -   `JSONObject` / `JSONArray`
+ *     -   `byte[]`
+ *     -   `Serializable` 对象
+ *     -   `Bitmap`
+ *     -   `Drawable`
+ * 2.  **带有效期的缓存**: 在存入数据时，可以指定一个 `saveTime`（单位：秒），数据将在存入后的这段时间后过期。`ACache` 会在读取时检查数据是否过期，如果过期则返回 `null` 并删除对应的缓存文件。
+ * 3.  **缓存管理与淘汰策略**: 
+ *     -   **大小限制 (`max_size`)**: 可以设置缓存目录的总大小上限。当存入新文件导致总大小超过限制时，会触发缓存淘汰。
+ *     -   **数量限制 (`max_count`)**: 可以设置缓存文件的总数量上限。当存入新文件导致总数量超过限制时，同样会触发缓存淘汰。
+ *     -   **LRU (Least Recently Used) 淘汰策略**: 当缓存达到上限时，`ACache` 会移除“最近最少使用”的文件。它通过记录每个文件的最后访问时间（`lastModified`）来实现这一策略。
+ * 4.  **多实例支持**: 可以通过 `ACache.get(context, cacheName)` 创建不同名字的缓存实例，每个实例对应一个独立的缓存目录，方便对不同业务模块的缓存进行隔离。
+ * 5.  **线程安全**: 内部使用 `ConcurrentHashMap`、`AtomicLong` 和 `AtomicInteger` 等线程安全的类来管理缓存元数据，确保在多线程环境下的数据一致性。
+ * 6.  **流式写入**: 提供 `put(String key)` 方法返回一个 `OutputStream`，允许开发者直接以流的方式写入大文件，写入完成后流关闭时会自动提交到缓存。
+ *
+ * How: 核心技术
+ * 1.  **文件系统存储**: `ACache` 将每个缓存条目存储为一个独立的文件。`key` 经过 `hashCode()` 计算后作为文件名，确保了文件名的唯一性和合法性。
+ * 2.  **自定义数据格式（带时间戳）**: 为了实现过期功能，`ACache` 在存储 `String` 和 `byte[]` 数据时，会在真实数据前附加一个包含“存入时间戳”和“有效时长”的头部信息，并用特殊的分隔符隔开。读取时，先解析这个头部来判断数据是否过期。
+ * 3.  **序列化与反序列化**: 
+ *     -   对于 `Serializable` 对象，使用 `ObjectOutputStream` 和 `ObjectInputStream` 进行序列化和反序列化，将其转换为 `byte[]` 进行存储和读取。
+ *     -   对于 `Bitmap` 和 `Drawable`，通过 `Bitmap.compress` 和 `BitmapFactory.decodeByteArray` 等方法，将其与 `byte[]` 进行相互转换。
+ * 4.  **缓存管理器 (`ACacheManager`)**: 这是一个内部类，是 `ACache` 的核心。它负责：
+ *     -   初始化时异步计算缓存目录的初始大小和文件数量。
+ *     -   管理 `lastUsageDates` 这个 `Map`，记录每个缓存文件的最后使用时间戳，为 LRU 策略提供依据。
+ *     -   实现 `put`、`get`、`remove`、`clear` 等核心缓存操作逻辑。
+ *     -   在 `put` 操作中检查缓存是否超限，如果超限则调用 `removeNext()` 方法来淘汰最旧的文件。
+ * 5.  **工具类 (`Utils`)**: 另一个内部类，封装了所有的数据转换和日期处理逻辑，例如 `Bitmap` 与 `byte[]` 的互转、`Drawable` 与 `Bitmap` 的互转、过期信息的创建与解析等，使得主类 `ACache` 的逻辑更清晰。
  */
 public class ACache {
     public static final int TIME_HOUR = 60 * 60;

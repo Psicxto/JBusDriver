@@ -1,2 +1,10 @@
+<!-- Android 清单文件的根元素 -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="me.jbusdriver.component.interceptors" />
+    package="me.jbusdriver.component.interceptors">
+    <!--
+        这个 manifest 文件非常简洁，因为它属于一个 Android 库模块 (library module)。
+        库模块的 manifest 文件最终会与主应用模块 (app module) 的 manifest 文件合并。
+        因此，这里只需要定义该库模块的唯一包名 (package name) 即可。
+        所有应用的组件，如 <application>, <activity>, <service> 等，都应在主应用的 manifest 中声明。
+    -->
+</manifest>
